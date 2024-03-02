@@ -1,0 +1,21 @@
+# Description: Configuration file for training the model
+
+
+max_iter: 20000
+num_samples: 20
+anneal_iter: 10000
+annealing: true
+show_iter: 1000
+
+
+criterion: cross_entropy
+
+optimizer:
+    name: Adam
+    lr: 0.001
+    weight_decay: 0.0001
+
+scheduler:
+    name: ReduceLROnPlateau
+    lr_factor: 0.1
+    lr_patience: 5
