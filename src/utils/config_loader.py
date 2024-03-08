@@ -3,18 +3,6 @@
 # Author: Joshua Stiller
 # Date: 02.03.24
 
-
-# config_loader.py
-# Description: A brief description of what this file does.
-# Author: Joshua Stiller
-# Date: 26.11.23
-
-
-# utils.py
-# Description: A brief description of what this file does.
-# Author: Joshua Stiller
-# Date: 19.11.23
-
 import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import normflows as nf
@@ -23,7 +11,7 @@ import wandb
 from typing import Optional
 
 
-def replace_empty_with_none(config, key):
+def replace_empty_with_none(config: dict, key: str) -> str or None:
     """
     Returns None if a config entry is not available.
 
@@ -94,10 +82,6 @@ def get_architecture_from_config(model, config):
 
     Returns
     -------
-    model: torch.nn.Module,
-        The model.
-    criterion: torch.nn.Module,
-        The loss function for training.
     optimizer: torch.optim.Optimizer,
         The optimizer.
     scheduler: torch.optim.lr_scheduler,
@@ -107,15 +91,8 @@ def get_architecture_from_config(model, config):
     ################################## Define Model ##################################
 
 
-    ################################ Load Pretrained ################################
-
-
     ################################## Define Loss ##################################
 
-    if config['criterion'] == 'cross_entropy':
-        criterion = torch.nn.CrossEntropyLoss()
-    else:
-        raise ValueError(f"Criterion {config['criterion']} not supported.")
 
     ################################ Define Optimizer ################################
 
@@ -142,4 +119,4 @@ def get_architecture_from_config(model, config):
     else:
         raise ValueError(f"Scheduler {config_scheduler['name']} not supported.")
 
-    return model, criterion, optimizer, scheduler
+    return optimizer, scheduler
