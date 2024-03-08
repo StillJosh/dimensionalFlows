@@ -5,38 +5,52 @@
 
 
 import torch
+from typing import Optional
 
 
-def rejection_sampling_2d(p, num_samples=1000, min_x=-1, max_x=1, min_y=-1, max_y=1, M=None):
+def rejection_sampling_2d(p: callable, num_samples: int = 1000, x_range: tuple = (-1, 1), y_range: tuple = (-1, 1),
+                          big_m: Optional[float] = None) -> torch.Tensor:
     """
-    Rejection sampling algorithm.
+    Sample from a 2D distribution using rejection sampling.
 
     Parameters
     ----------
     p: function,
         The target distribution.
+    num_samples: int,
+        The number of samples to draw.
+    x_range: tuple,
+        The minimum and maximum x values to sample from.
+    y_range: tuple,
+        The minimum and maximum y values to sample from.
+    big_m: float,
+        An upper bound for the quotient of the target distribution and the proposal distribution.
 
     Returns
     -------
-    x: float,
+    x: torch.Tensor,
         A sample from the target distribution.
     """
+    min_x, max_x = x_range
+    min_y, max_y = y_range
+
     square_size = (max_x - min_x) * (max_y - min_y)
 
-    if M is None:
-        # Estimate M by finding the maximum of p over a grid
+    # If big_m is None, estimate big_m by finding the maximum of p over a grid
+    if big_m is None:
         grid_size = 100
         xx, yy = torch.meshgrid(torch.linspace(min_x, max_x, grid_size), torch.linspace(min_y, max_y, grid_size))
         zz = torch.cat([xx.unsqueeze(2), yy.unsqueeze(2)], 2).view(-1, 2)
         p_max = torch.max(p(zz))
-        M = 1.1 * square_size * p_max
+        big_m = 1.1 * square_size * p_max
 
+    # Sample with rejection algorithm until num_samples samples are accepted
     res = torch.tensor([])
     while len(res) < num_samples:
         u = torch.rand(128)
         x = torch.rand(128, 2) * torch.tensor([max_x - min_x, max_y - min_y]) + torch.tensor([min_x, min_y])
 
-        accept = u < p(x) / (M * torch.ones(128)/square_size)
+        accept = u < p(x) / (big_m * torch.ones(128) / square_size)
         res = torch.cat([res, x[accept]], 0)
 
     return res[:num_samples]
