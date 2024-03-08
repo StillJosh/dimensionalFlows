@@ -8,6 +8,11 @@ annealing: true
 show_iter: 1000
 
 
+prior:
+    name: pretrained
+    dim: 1
+    path: run-ls9lgtc3-model.pth:v0
+
 criterion: cross_entropy
 
 optimizer:

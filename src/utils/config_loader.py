@@ -17,6 +17,10 @@
 
 import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+import normflows as nf
+from src.utils.distributions import JointDistribution
+import wandb
+from typing import Optional
 
 
 def replace_empty_with_none(config, key):
@@ -44,10 +48,42 @@ def replace_empty_with_none(config, key):
     return value
 
 
+def get_prior_from_config(config: dict, run: Optional[wandb.run]) -> nf.distributions.BaseDistribution:
+    """
+    Returns the prior distribution specified in the config file.
+
+    Parameters
+    ----------
+    config: dict,
+        The config dictionary.
+    run: wandb.run,
+        The current wandb run.
+
+    Returns
+    -------
+    q0: nf.distributions.BaseDistribution,
+        The prior distribution.
+    """
+
+    prior_config = config['prior']
+    if prior_config['name'] == 'gaussian':
+        q0 = nf.distributions.DiagGaussian(prior_config['dim'])
+
+    # Load prior as a pretrained flow from wandb
+    elif prior_config['name'] == 'pretrained':
+        artifact = run.use_artifact('jay-son/DimensionalFlows/' + prior_config['path'], type='model')
+        artifact_dir = artifact.download()
+        q0 = JointDistribution([torch.load(artifact_dir + '/model.pth'), nf.distributions.DiagGaussian(1)], [1, 2])
+
+    else:
+        raise ValueError(f"Prior {prior_config['name']} not supported.")
+
+    return q0
+
+
 def get_architecture_from_config(model, config):
     """
-    Returns the model architecture specified in the config file. Specifically, it returns the model, criterion,
-    optimizer and scheduler.
+    Returns the model architecture specified in the config file. Specifically, it returns the optimizer and scheduler.
 
     Parameters
     ----------

@@ -61,7 +61,7 @@ def train(config):
 
     # Set target and q0
     target = nf.distributions.TwoModes(2, 0.1)
-    q0 = nf.distributions.DiagGaussian(2)
+    q0 = get_prior_from_config(config, run)
 
     x_train = utils.rejection_sampling_2d(lambda x: torch.exp(target.log_prob(x)), 1000, -3, 3, -2, 2)
 
