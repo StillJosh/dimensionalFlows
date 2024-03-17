@@ -16,15 +16,16 @@ from tqdm import tqdm
 
 import wandb
 
-from src.models.flows import norm_flow
+from src.models.flows import norm_flow, resid_flow
 from src.utils.distributions import JointDistribution
 from src.plotting import distribution_plotting as dsplot
 from src.utils import utils
 from src.utils.config_loader import get_architecture_from_config, get_prior_from_config
 from src.utils.logger import logger
 
+import os
 # Disable wandb for debugging
-#os.environ["WANDB_MODE"] = "disabled"
+os.environ["WANDB_MODE"] = "disabled"
 
 
 def train():
@@ -46,10 +47,11 @@ def train():
     q0 = get_prior_from_config(config, run)
 
     # Sample from the target distribution
-    x_train = utils.rejection_sampling_2d(lambda x: torch.exp(target.log_prob(x)), 1000, -3, 3, -2, 2)
+    x_train = utils.rejection_sampling_2d(lambda x: torch.exp(target.log_prob(x)), config['num_samples'], (-3, 3), (-2, 2))
+    #x_train = x_train[:,:1]
 
     # Define the normalizing flow model
-    nfm = norm_flow(q0, 2, K=16)
+    nfm = resid_flow(q0, 2, K=16)
 
     # Move model on GPU if available
     nfm = nfm.to(device)
@@ -60,10 +62,10 @@ def train():
 
     # Iterate over the specified epochs, log the loss and regularly plot the current distribution as a contour plot
     for it in tqdm(range(config['max_iter'])):
-        loss = run_epoch(nfm, x_train, optimizer, config)
+        loss = run_epoch(nfm, x_train, optimizer)
         run.log({'loss': loss})
 
-        if (it + 1) % 1 == 0:  # config['show_iter'] == 0:
+        if (it + 1) % config['show_iter'] == 0:
             if x_train.shape[1] == 1:
                 fig, ax = dsplot.plot_progress_1d(x_train, nfm, device)
                 run.log({'chart': wandb.Image(fig)})
@@ -71,6 +73,9 @@ def train():
             elif x_train.shape[1] == 2:
                 fig, ax = dsplot.plot_progress_2d(target, nfm, device)
                 run.log({'chart': wandb.Image(fig)})
+
+            if os.environ["WANDB_MODE"] == "disabled":
+                fig.show()
 
     torch.save(nfm, 'model.pth')
     run.log_model('model.pth')

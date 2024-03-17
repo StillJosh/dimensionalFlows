@@ -4,4 +4,3 @@
 # Date: 02.03.24
 
 from .dimensionalFlow import DimensionalFlow
-from .coupling1d import MaskedAffineFlow
