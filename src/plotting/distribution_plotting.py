@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import torch
 from normflows.core import NormalizingFlow
 from normflows.distributions import PriorDistribution
-
+import seaborn as sns
 
 # Plot target distribution
 def plot_progress_2d(target: PriorDistribution, nfm: NormalizingFlow, device: torch.device, x_range: tuple = (-3, 3),
@@ -101,7 +101,7 @@ def plot_progress_1d(target_samples: torch.tensor, nfm: NormalizingFlow, device:
     # Plot both distributions
     fig, ax = plt.subplots(1, 1, figsize=(15, 15))
     ax.plot(x, prob.data.numpy())
-    ax.hist(target_samples, bins=100, density=True, alpha=0.5)
-    ax.set_aspect('equal', 'box')
+    sns.histplot(target_samples[:3000], bins=100, stat='density', alpha=0.5, ax=ax)
+    #ax.set_aspect('equal', 'box')
 
     return fig, ax
