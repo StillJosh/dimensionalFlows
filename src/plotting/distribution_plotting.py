@@ -50,7 +50,9 @@ def plot_progress_2d(target: PriorDistribution, nfm: NormalizingFlow, device: to
     prob_target = torch.exp(log_prob)
 
     # Calculate the probabilities of the normalizing flow distribution
+    nfm.eval()
     log_prob = nfm.log_prob(zz).to('cpu').view(*xx.shape)
+    nfm.train()
     prob = torch.exp(log_prob)
     prob[torch.isnan(prob)] = 0
 
@@ -94,7 +96,9 @@ def plot_progress_1d(target_samples: torch.tensor, nfm: NormalizingFlow, device:
     x = torch.linspace(min_x, max_x, grid_size).reshape(-1, 1).to(device)
 
     # Calculate the probabilities of the normalizing flow distribution
+    nfm.eval()
     log_prob = nfm.log_prob(x).to('cpu')
+    nfm.train()
     prob = torch.exp(log_prob)
     prob[torch.isnan(prob)] = 0
 
