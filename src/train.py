@@ -55,7 +55,10 @@ def train():
 
     # Move model on GPU if available
     nfm = nfm.to(device)
-    x_train = x_train.to(device)
+
+    # Load the dataset and create dataloader
+    dataset = getattr(ds, config['dataset']['name'])(**config['dataset']['params'])
+    dl_train = DataLoader(dataset, batch_size=config['batch_size'], shuffle=True)
 
     if hasattr(nfm, 'flow_dims'):
         utils.reduce_dimension(dataset, nfm, config)
