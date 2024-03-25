@@ -6,3 +6,5 @@ notebooks/datasets
 .DS_Store
 .env
 *.pth
+wandb
+.python-version
