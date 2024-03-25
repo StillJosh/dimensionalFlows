@@ -5,10 +5,12 @@
 
 
 # Real NVP
+import sys
+
+sys.path.append('.')
 
 from pathlib import Path
 
-import normflows as nf
 from normflows.core import NormalizingFlow
 import torch
 import yaml
@@ -16,12 +18,14 @@ from tqdm import tqdm
 
 import wandb
 
-from src.models.flows import norm_flow
-from src.utils.distributions import JointDistribution
 from src.plotting import distribution_plotting as dsplot
-from src.utils import utils
-from src.utils.config_loader import get_architecture_from_config, get_prior_from_config
+from src.utils.config_loader import get_architecture_from_config, get_model_from_config
+import src.utils.utils as utils
+from src import datasets as ds
 from src.utils.logger import logger
+
+from torch.utils.data import DataLoader
+from time import time
 
 # Disable wandb for debugging
 #os.environ["WANDB_MODE"] = "disabled"
@@ -29,6 +33,92 @@ from src.utils.logger import logger
 
 def train():
     """ Load the model and dataset and train the normalizing flow. """
+
+    # Define the normalizing flow model
+    nfm = get_model_from_config(config)
+
+    # Move model on GPU if available
+    nfm = nfm.to(device)
+
+    # Load the dataset and create dataloader
+    dataset = getattr(ds, config['dataset']['name'])(**config['dataset']['params'])
+    dl_train = DataLoader(dataset, batch_size=config['batch_size'], shuffle=True)
+
+    if hasattr(nfm, 'flow_dims'):
+        utils.reduce_dimension(dataset, nfm, config)
+
+    optimizer, scheduler = get_architecture_from_config(nfm, config)
+
+    start_time = time()
+    # Iterate over the specified epochs, log the loss and regularly plot the current distribution as a contour plot
+    for it in tqdm(range(config['epochs'])):
+
+        # Validation Loss
+        utils.epoch_scheduler(dl_train, nfm, config['epochs'], config)
+        dl_train.dataset.phase = 'val'
+        loss = run_epoch(nfm, dl_train, optimizer, phase='val')
+        run.log({'val_loss': loss}, step=it )
+        run.log({'val_loss': loss, 'time': time() - start_time}, step=it)
+
+        # Training Loss
+        utils.epoch_scheduler(dl_train, nfm, it, config)
+        dl_train.dataset.phase = 'train'
+        loss = run_epoch(nfm, dl_train, optimizer, phase='train')
+        scheduler.step(loss)
+        run.log({'train_loss': loss}, step=it)
+
+
+        # Plot status of the model
+        if (dl_train.dataset.return_dim <= 2) and ((it % config['show_iter'] == 0) or (it-1 in config['epoch_switch'])):
+            fig, ax = dsplot.plot_progress(dl_train, nfm, device)
+            run.log({'chart': wandb.Image(fig)}, step=it)
+
+
+    torch.save(nfm, 'model.pth')
+    run.log_model('model.pth')
+
+
+def run_epoch(nfm: NormalizingFlow, dl_train: DataLoader, optimizer: torch.optim.Optimizer, phase='train') -> float:
+    """
+    Run a single epoch of training.
+
+    Parameters
+    ----------
+    nfm: NormalizingFlow,
+        The normalizing flow model.
+    dl_train: DataLoader,
+        The training data.
+    optimizer: torch.optim.Optimizer,
+        The optimizer.
+
+    Returns
+    -------
+    float,
+        The loss of the model in this epoch.
+    """
+
+    epoch_loss = 0
+    for x_train in dl_train:
+        x_train = x_train.to(device)
+
+        optimizer.zero_grad()
+        with torch.set_grad_enabled(phase == 'train'):
+            loss = nfm.forward_kld(x_train)
+
+        if phase == 'train':
+            if ~(torch.isnan(loss) | torch.isinf(loss)):
+                loss.backward()
+                optimizer.step()
+
+            #nf.utils.update_lipschitz(nfm, 50)
+
+        epoch_loss += loss.item()
+
+    return epoch_loss / len(dl_train)
+
+
+if __name__ == '__main__':
+    torch.manual_seed(42)
 
     # Use Apple M1 Chip if available, else check if GPU is available, else train on cpu
     if torch.backends.mps.is_available():
@@ -41,77 +131,6 @@ def train():
 
     logger.info(f'Using device: {device}')
 
-    # Set target and base distribution
-    target = nf.distributions.TwoModes(2, 0.1)
-    q0 = get_prior_from_config(config, run)
-
-    # Sample from the target distribution
-    x_train = utils.rejection_sampling_2d(lambda x: torch.exp(target.log_prob(x)), 1000, -3, 3, -2, 2)
-
-    # Define the normalizing flow model
-    nfm = norm_flow(q0, 2, K=16)
-
-    # Move model on GPU if available
-    nfm = nfm.to(device)
-    x_train = x_train.to(device)
-
-
-    optimizer, scheduler = get_architecture_from_config(nfm, config)
-
-    # Iterate over the specified epochs, log the loss and regularly plot the current distribution as a contour plot
-    for it in tqdm(range(config['max_iter'])):
-        loss = run_epoch(nfm, x_train, optimizer, config)
-        run.log({'loss': loss})
-
-        if (it + 1) % 1 == 0:  # config['show_iter'] == 0:
-            if x_train.shape[1] == 1:
-                fig, ax = dsplot.plot_progress_1d(x_train, nfm, device)
-                run.log({'chart': wandb.Image(fig)})
-
-            elif x_train.shape[1] == 2:
-                fig, ax = dsplot.plot_progress_2d(target, nfm, device)
-                run.log({'chart': wandb.Image(fig)})
-
-    torch.save(nfm, 'model.pth')
-    run.log_model('model.pth')
-
-
-def run_epoch(nfm: NormalizingFlow, x_train: torch.tensor, optimizer: torch.optim.Optimizer) -> float:
-    """
-    Run a single epoch of training.
-
-    Parameters
-    ----------
-    nfm: NormalizingFlow,
-        The normalizing flow model.
-    x_train: torch.tensor,
-        The training data.
-    optimizer: torch.optim.Optimizer,
-        The optimizer.
-
-    Returns
-    -------
-    float,
-        The loss of the model in this epoch.
-    """
-
-
-    optimizer.zero_grad()
-    if config['annealing']:
-        loss = nfm.forward_kld(x_train)
-    else:
-        loss = nfm.reverse_alpha_div(config['num_samples'], dreg=True, alpha=1)
-
-    if ~(torch.isnan(loss) | torch.isinf(loss)):
-        loss.backward()
-        optimizer.step()
-
-
-    return loss.to('cpu').data.numpy()
-
-
-if __name__ == '__main__':
-    torch.manual_seed(0)
 
     # Load the run configurations from the config file
     config = yaml.load(open(Path(__file__).parent.joinpath('train_config.yaml'), 'r'),
@@ -119,6 +138,8 @@ if __name__ == '__main__':
 
     # Start the wandb run
     run = wandb.init(project='DimensionalFlows', config=config)
+    wandb.define_metric('time')
+    wandb.define_metric('val_loss', step_metric='time')
     logger.info('Start Run')
 
     train()

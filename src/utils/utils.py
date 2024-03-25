@@ -6,6 +6,8 @@
 
 import torch
 from typing import Optional
+from sklearn.decomposition import PCA
+import src.reductions as reduce_dim
 
 
 def rejection_sampling_2d(p: callable, num_samples: int = 1000, x_range: tuple = (-1, 1), y_range: tuple = (-1, 1),
@@ -54,3 +56,46 @@ def rejection_sampling_2d(p: callable, num_samples: int = 1000, x_range: tuple =
         res = torch.cat([res, x[accept]], 0)
 
     return res[:num_samples]
+
+
+def epoch_scheduler(dl, nfm, epoch, config):
+    """
+    Adjust the number of flows and the dimensionality of the dataset based on the current epoch.
+
+    Parameters
+    ----------
+    dl: torch.utils.data.DataLoader,
+        The dataloader.
+    nfm: nf.NormalizingFlow,
+        The normalizing flow model.
+    epoch: int,
+        The current epoch.
+    """
+
+    if hasattr(nfm, 'current_flow'):
+        for epoch_switch in config['epoch_switch']:
+            if epoch <= epoch_switch:
+                nfm.current_flow = config['epoch_switch'].index(epoch_switch) + 1
+                dl.dataset.return_dim = nfm.flow_dims[nfm.current_flow - 1]
+                return
+
+        nfm.current_flow = len(nfm.flow_dims)
+        dl.dataset.return_dim = nfm.flow_dims[-1]
+
+
+def reduce_dimension(dataset, nfm, config):
+
+    reduction = getattr(reduce_dim, config['reduction'])
+    for dim in nfm.flow_dims[:-1]:
+        dataset.phase = 'train'
+        flow_num = nfm.flow_dims.index(dim)
+
+        # Add one as flows start counting at 1 and one, as we
+        x_transformed = nfm.part_inverse(dataset.data, flow_num + 1)
+
+        red = reduction()
+        x_reduced = red.fit_transform(x_transformed)[..., :dim]
+
+        dataset.data_reduced_train[dim] = torch.tensor(x_reduced, dtype=torch.float32)
+        nfm.pcas[dataset.data.shape[-1]] = torch.tensor(red.components_, dtype=torch.float32)
+

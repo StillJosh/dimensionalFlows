@@ -42,3 +42,16 @@ def norm_flow(q0, latent_size, K=2):
 
     nfm = nf.NormalizingFlow(q0=q0, flows=flows)
     return nfm
+
+
+def spline_flow(q0, latent_size, K=2, hidden_units=128, hidden_layers=3):
+    flows = []
+    for i in range(K):
+        flows += [nf.flows.AutoregressiveRationalQuadraticSpline(latent_size, hidden_layers, hidden_units,
+                                                                 init_identity=True)]
+        flows += [nf.flows.LULinearPermute(latent_size, identity_init=True)]
+
+    # Construct flow model
+    nfm = nf.NormalizingFlow(q0=q0, flows=flows)
+
+    return nfm

@@ -3,12 +3,17 @@
 # Author: Joshua Stiller
 # Date: 02.03.24
 
-import torch
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-import normflows as nf
-from src.utils.distributions import JointDistribution
-import wandb
 from typing import Optional
+
+import normflows as nf
+import torch
+import wandb
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+from src.models.dimensionalFlow import DimensionalFlow
+from src.utils.distributions import JointDistribution
+from src.models import flows as fl
+
 
 
 def replace_empty_with_none(config: dict, key: str) -> str or None:
@@ -55,13 +60,14 @@ def get_prior_from_config(config: dict, run: Optional[wandb.run]) -> nf.distribu
 
     prior_config = config['prior']
     if prior_config['name'] == 'gaussian':
-        q0 = nf.distributions.DiagGaussian(prior_config['dim'])
+        q0 = nf.distributions.DiagGaussian(prior_config['dim'], trainable=prior_config['trainable'])
 
     # Load prior as a pretrained flow from wandb
     elif prior_config['name'] == 'pretrained':
         artifact = run.use_artifact('jay-son/DimensionalFlows/' + prior_config['path'], type='model')
         artifact_dir = artifact.download()
-        q0 = JointDistribution([torch.load(artifact_dir + '/model.pth'), nf.distributions.DiagGaussian(1)], [1, 2])
+        q0 = JointDistribution([torch.load(artifact_dir + '/model.pth').eval(), nf.distributions.DiagGaussian(1)],
+                               [1, 2])
 
     else:
         raise ValueError(f"Prior {prior_config['name']} not supported.")
@@ -115,8 +121,41 @@ def get_architecture_from_config(model, config):
     elif config_scheduler['name'] == 'ReduceLROnPlateau':
         scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=config_scheduler['lr_factor'],
                                       patience=config_scheduler['lr_patience'],
-                                      verbose=True)
+                                      min_lr=config_scheduler['min_lr'])
     else:
         raise ValueError(f"Scheduler {config_scheduler['name']} not supported.")
 
     return optimizer, scheduler
+
+
+def get_model_from_config(config: dict) -> nf.flows.base.Flow:
+    """
+    Returns the normalizing flow model specified in the config file.
+
+    Parameters
+    ----------
+    config: dict,
+        The config dictionary.
+    run: wandb.run,
+        The current wandb run.
+
+    Returns
+    -------
+    nfm: nf.models.NormalizingFlow,
+        The normalizing flow model.
+    """
+
+    model_config = config['model']
+    if len(model_config) > 1:
+        flows = [getattr(fl, flow['name'])(nf.distributions.DiagGaussian(flow['dim'], trainable=False), **flow['params']) for flow
+                 in model_config.values()]
+
+        flow_dims = [flow['dim'] for flow in model_config.values()]
+        nfm = DimensionalFlow(flows, flow_dims)
+
+    else:
+        flow_config = list(model_config.values())[0]
+        nfm = getattr(fl, flow_config['name'])(nf.distributions.DiagGaussian(flow_config['dim'], trainable=False),
+                                                      **flow_config['params'])
+
+    return nfm

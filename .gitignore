@@ -2,3 +2,9 @@
 **/__pycache__
 src/wandb
 src/artifacts
+notebooks/datasets
+.DS_Store
+.env
+*.pth
+wandb
+.python-version
