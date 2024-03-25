@@ -61,21 +61,7 @@ def train():
     optimizer, scheduler = get_architecture_from_config(nfm, config)
 
     # Iterate over the specified epochs, log the loss and regularly plot the current distribution as a contour plot
-    for it in tqdm(range(config['max_iter'])):
-        loss = run_epoch(nfm, x_train, optimizer)
-        run.log({'loss': loss})
-
-        if (it + 1) % config['show_iter'] == 0:
-            if x_train.shape[1] == 1:
-                fig, ax = dsplot.plot_progress_1d(x_train, nfm, device)
-                run.log({'chart': wandb.Image(fig)})
-
-            elif x_train.shape[1] == 2:
-                fig, ax = dsplot.plot_progress_2d(target, nfm, device)
-                run.log({'chart': wandb.Image(fig)})
-
-            if os.environ["WANDB_MODE"] == "disabled":
-                fig.show()
+        utils.epoch_scheduler(dl_train, nfm, config['epochs'], config)
 
     torch.save(nfm, 'model.pth')
     run.log_model('model.pth')

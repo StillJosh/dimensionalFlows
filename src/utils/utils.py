@@ -54,3 +54,29 @@ def rejection_sampling_2d(p: callable, num_samples: int = 1000, x_range: tuple =
         res = torch.cat([res, x[accept]], 0)
 
     return res[:num_samples]
+
+
+def epoch_scheduler(dl, nfm, epoch, config):
+    """
+    Adjust the number of flows and the dimensionality of the dataset based on the current epoch.
+
+    Parameters
+    ----------
+    dl: torch.utils.data.DataLoader,
+        The dataloader.
+    nfm: nf.NormalizingFlow,
+        The normalizing flow model.
+    epoch: int,
+        The current epoch.
+    """
+
+    if hasattr(nfm, 'current_flow'):
+        for epoch_switch in config['epoch_switch']:
+            if epoch <= epoch_switch:
+                nfm.current_flow = config['epoch_switch'].index(epoch_switch) + 1
+                dl.dataset.return_dim = nfm.flow_dims[nfm.current_flow - 1]
+                return
+
+        nfm.current_flow = len(nfm.flow_dims)
+        dl.dataset.return_dim = nfm.flow_dims[-1]
+
