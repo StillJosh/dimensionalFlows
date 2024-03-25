@@ -57,6 +57,8 @@ def train():
     nfm = nfm.to(device)
     x_train = x_train.to(device)
 
+    if hasattr(nfm, 'flow_dims'):
+        utils.reduce_dimension(dataset, nfm, config)
 
     optimizer, scheduler = get_architecture_from_config(nfm, config)
 

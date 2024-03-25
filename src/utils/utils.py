@@ -6,6 +6,8 @@
 
 import torch
 from typing import Optional
+from sklearn.decomposition import PCA
+import src.reductions as reduce_dim
 
 
 def rejection_sampling_2d(p: callable, num_samples: int = 1000, x_range: tuple = (-1, 1), y_range: tuple = (-1, 1),
@@ -79,4 +81,21 @@ def epoch_scheduler(dl, nfm, epoch, config):
 
         nfm.current_flow = len(nfm.flow_dims)
         dl.dataset.return_dim = nfm.flow_dims[-1]
+
+
+def reduce_dimension(dataset, nfm, config):
+
+    reduction = getattr(reduce_dim, config['reduction'])
+    for dim in nfm.flow_dims[:-1]:
+        dataset.phase = 'train'
+        flow_num = nfm.flow_dims.index(dim)
+
+        # Add one as flows start counting at 1 and one, as we
+        x_transformed = nfm.part_inverse(dataset.data, flow_num + 1)
+
+        red = reduction()
+        x_reduced = red.fit_transform(x_transformed)[..., :dim]
+
+        dataset.data_reduced_train[dim] = torch.tensor(x_reduced, dtype=torch.float32)
+        nfm.pcas[dataset.data.shape[-1]] = torch.tensor(red.components_, dtype=torch.float32)
 
