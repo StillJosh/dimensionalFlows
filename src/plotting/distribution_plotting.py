@@ -8,9 +8,22 @@ import torch
 from normflows.core import NormalizingFlow
 from normflows.distributions import PriorDistribution
 import seaborn as sns
-
+from torch.utils.data import DataLoader
 # Plot target distribution
-def plot_progress_2d(target: PriorDistribution, nfm: NormalizingFlow, device: torch.device, x_range: tuple = (-3, 3),
+
+
+def plot_progress(dl: DataLoader, nfm: NormalizingFlow, device: torch.device = 'cpu', x_range: tuple = (-3, 3),
+                     y_range: tuple = (-3, 3)) -> (plt.Figure, plt.Axes):
+
+    if dl.dataset.return_dim == 2:
+        return plot_progress_2d(dl.dataset.target, nfm, device, x_range, y_range)
+    elif dl.dataset.return_dim == 1:
+        return plot_progress_1d(dl.dataset.data_reduced[1], nfm, device, x_range)
+
+    return None
+
+
+def plot_progress_2d(target: PriorDistribution, nfm: NormalizingFlow, device: torch.device = 'cpu', x_range: tuple = (-3, 3),
                      y_range: tuple = (-3, 3)) -> (plt.Figure, plt.Axes):
     """
     Plots the normalizing flow distribution as a heatmap and the target distribution as contour lines.
@@ -45,9 +58,13 @@ def plot_progress_2d(target: PriorDistribution, nfm: NormalizingFlow, device: to
     zz = torch.cat([xx.unsqueeze(2), yy.unsqueeze(2)], 2).view(-1, 2)
     zz = zz.to(device)
 
+    fig, ax = plt.subplots(1, 1, figsize=(15, 15))
+
     # Calculate the probabilities of the target distribution
-    log_prob = target.log_prob(zz).to('cpu').view(*xx.shape)
-    prob_target = torch.exp(log_prob)
+    if target:
+        log_prob = target.log_prob(zz).to('cpu').view(*xx.shape)
+        prob_target = torch.exp(log_prob)
+        ax.contour(xx, yy, prob_target.data.numpy(), cmap=plt.get_cmap('cool'), linewidths=2)
 
     # Calculate the probabilities of the normalizing flow distribution
     nfm.eval()
@@ -57,9 +74,7 @@ def plot_progress_2d(target: PriorDistribution, nfm: NormalizingFlow, device: to
     prob[torch.isnan(prob)] = 0
 
     # Plot both distributions
-    fig, ax = plt.subplots(1, 1, figsize=(15, 15))
     ax.pcolormesh(xx, yy, prob.data.numpy())
-    ax.contour(xx, yy, prob_target.data.numpy(), cmap=plt.get_cmap('cool'), linewidths=2)
     ax.set_aspect('equal', 'box')
 
     return fig, ax
@@ -105,7 +120,7 @@ def plot_progress_1d(target_samples: torch.tensor, nfm: NormalizingFlow, device:
     # Plot both distributions
     fig, ax = plt.subplots(1, 1, figsize=(15, 15))
     ax.plot(x, prob.data.numpy())
-    sns.histplot(target_samples[:3000], bins=100, stat='density', alpha=0.5, ax=ax)
+    sns.histplot(target_samples[:3000, :1], bins=100, stat='density', alpha=0.5, ax=ax)
     #ax.set_aspect('equal', 'box')
 
     return fig, ax
